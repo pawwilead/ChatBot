@@ -1,0 +1,28 @@
+{
+  "name": "bot",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "concurrently \"nodemon src/app.js\" \"nodemon src/scripts/monitor.js\"",
+    "dev": "nodemon src/app.js",
+    "monitor": "nodemon src/scripts/monitor.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "axios": "^1.7.9",
+    "bot": "file:",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "googleapis": "^146.0.0",
+    "node-cron": "^3.0.3"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "nodemon": "^3.1.9"
+  }
+}
