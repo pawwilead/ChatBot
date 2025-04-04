@@ -1,6 +1,20 @@
 import { createFlow } from "@builderbot/bot";
-import { mainFlow } from "./mainFlow";
+import {
+    mainFlow,
+    askIfRegistered,
+    askIfRegistered_repeat,
+    writeCC,
+    writeCCNew,
+    writeCCNewCheck,
+    mainFlow_repeat
+} from "./mainFlow";
 
 export default createFlow([
-    mainFlow
-])
+    mainFlow,
+    askIfRegistered,
+    askIfRegistered_repeat,
+    writeCC,
+    writeCCNew,
+    writeCCNewCheck,
+    mainFlow_repeat
+]);
