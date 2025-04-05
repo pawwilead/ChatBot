@@ -1,20 +1,24 @@
 import { createFlow } from "@builderbot/bot";
 import {
-    mainFlow,
-    askIfRegistered,
-    askIfRegistered_repeat,
-    writeCC,
-    writeCCNew,
-    writeCCNewCheck,
-    mainFlow_repeat
+    start,
+    start_repeat,
+    b1,
+    b1_repeat,
+    c1,
+    c2,
+    e1,
+    e2,
+    e3,
 } from "./mainFlow";
 
 export default createFlow([
-    mainFlow,
-    askIfRegistered,
-    askIfRegistered_repeat,
-    writeCC,
-    writeCCNew,
-    writeCCNewCheck,
-    mainFlow_repeat
+    start,
+    start_repeat,
+    b1,
+    b1_repeat,
+    c1,
+    c2,
+    e1,
+    e2,
+    e3,
 ]);

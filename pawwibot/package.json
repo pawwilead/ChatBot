@@ -16,6 +16,7 @@
     "@builderbot/provider-meta": "1.2.5",
     "base-bailey-json": "file:",
     "dotenv": "^16.4.7",
+    "googleapis": "^148.0.0",
     "openai": "^4.91.1"
   },
   "devDependencies": {
