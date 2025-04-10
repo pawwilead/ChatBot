@@ -9,6 +9,16 @@ import {
     e1,
     e2,
     e3,
+    i1,
+    k1,
+    l1,
+    m1,
+    m2,
+    o1,
+    o2,
+    q1,
+    s1,
+    u1
 } from "./mainFlow";
 
 export default createFlow([
@@ -21,4 +31,14 @@ export default createFlow([
     e1,
     e2,
     e3,
+    i1,
+    k1,
+    l1,
+    m1,
+    m2,
+    o1,
+    o2,
+    q1,
+    s1,
+    u1
 ]);
