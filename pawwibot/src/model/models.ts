@@ -3,22 +3,20 @@ export class conversation {
     cc: number
     address: string
 
-    selectedDog: string
-    newDog: string
-    newDogDescription: string
+    // Lista de todos los perros que tiene guardados este usuario
+    dogs: {
+        nombre: string
+        descripcion: string
+    }[]
 
+    // Perro actualmente seleccionado
+    selectedDog?: {
+        nombre: string
+        descripcion: string
+    }
+
+    // Datos del servicio solicitado
     tipoServicio: string
     tiempoServicio: string
     inicioServicio: string
-}
-
-export class perro {
-    nombre: string
-    descripcion: string
-}
-
-export class paseador {
-    cc:number
-    cantidadPaseos: number
-    valoracion: number
 }

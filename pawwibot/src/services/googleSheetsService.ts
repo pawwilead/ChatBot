@@ -143,3 +143,83 @@ export async function insertNewClientWithPet(cedula: string, nombrePerro: string
     }
 }
 
+export async function addDogToExistingClient(cedula: string, nuevoPerro: { nombre: string, descripcion: string }) {
+    try {
+        const { sheets, authClient } = await getSheetClient();
+        const spreadsheetId = "1blH9C1I4CSf2yJ_8AlM9a0U2wBFh7RSiDYO8-XfKxLQ";
+        const range = "usersDB!A1:AA1000";
+
+        const response = await sheets.spreadsheets.values.get({
+            spreadsheetId,
+            range,
+            auth: authClient
+        });
+
+        const rows = response.data.values || [];
+        let rowIndexToUpdate = -1;
+        let perrosActuales = [];
+
+        // Buscar cédula y obtener lista de perros
+        for (let i = 1; i < rows.length; i++) {
+            if (rows[i][0] === cedula) {
+                rowIndexToUpdate = i;
+                try {
+                    perrosActuales = JSON.parse(rows[i][1] || "[]");
+                    if (!Array.isArray(perrosActuales)) perrosActuales = [];
+                } catch {
+                    perrosActuales = [];
+                }
+                break;
+            }
+        }
+
+        if (rowIndexToUpdate === -1) {
+            return { updated: false, error: "Cedula no encontrada" };
+        }
+
+        perrosActuales.push(nuevoPerro);
+
+        await sheets.spreadsheets.values.update({
+            spreadsheetId,
+            range: `usersDB!B${rowIndexToUpdate + 1}`,
+            valueInputOption: "RAW",
+            requestBody: {
+                values: [[JSON.stringify(perrosActuales)]]
+            },
+            auth: authClient
+        });
+
+        return { updated: true };
+    } catch (error) {
+        console.error("Error al agregar nuevo perro:", error);
+        return { updated: false, error: true };
+    }
+}
+
+export async function getDogsFromCedula(cedula: string): Promise<{ nombre: string, descripcion: string }[]> {
+    const { sheets, authClient } = await getSheetClient();
+    const spreadsheetId = "1blH9C1I4CSf2yJ_8AlM9a0U2wBFh7RSiDYO8-XfKxLQ";
+    const range = "usersDB!A1:AA1000";
+
+    const response = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range,
+        auth: authClient
+    });
+
+    const rows = response.data.values || [];
+
+    for (let i = 1; i < rows.length; i++) {
+        if (rows[i][0] === cedula) {
+            try {
+                const perros = JSON.parse(rows[i][1] || "[]");
+                return Array.isArray(perros) ? perros : [];
+            } catch (err) {
+                console.error("🐾 Error parseando perros:", err);
+                return [];
+            }
+        }
+    }
+
+    return [];
+}

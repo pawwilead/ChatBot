@@ -1,6 +1,6 @@
 import { addKeyword, EVENTS } from "@builderbot/bot";
 import { conversation } from "~/model/models";
-import { findCedulaInSheet, insertNewClient, insertNewClientWithPet } from "~/services/googleSheetsService";
+import { addDogToExistingClient, findCedulaInSheet, insertNewClient, insertNewClientWithPet, getDogsFromCedula } from "~/services/googleSheetsService";
 
 const conversations: { [key: string]: conversation } = {};
 
@@ -78,27 +78,77 @@ const b1_repeat = addKeyword('ask_registered_repeat')
         return gotoFlow(b1_repeat);
     });
 
-const c1 = addKeyword('write_cc')
+    const c1 = addKeyword('write_cc')
     .addAnswer(`Por favor, ingresa tu número de cédula: (Escribe sin puntos ni letras)`)
     .addAnswer('', { capture: true })
     .addAction(async (ctx, { flowDynamic, gotoFlow }) => {
         const cedula = ctx.body.trim();
         const isValid = /^\d{6,10}$/.test(cedula);
 
-        if (isValid) {
-            const existe = await findCedulaInSheet(cedula);
-            
-            if (existe) {
-                await flowDynamic(`✅ La cédula *${cedula}* ya está registrada. Bienvenido de nuevo.`);
-            } else {
-                return gotoFlow(e1);
-            }
-            return;
+        if (!isValid) {
+            await flowDynamic("❌ Lo que ingresaste no parece una cédula válida. Intenta de nuevo por favor.");
+            return gotoFlow(c1);
         }
 
-        await flowDynamic("❌ Lo que ingresaste no parece una cédula válida. Intenta de nuevo por favor.");
+        const existe = await findCedulaInSheet(cedula);
+        conversations[ctx.from] = conversations[ctx.from] || new conversation();
+        conversations[ctx.from].cc = parseInt(cedula);
+
+        if (existe) {
+            await flowDynamic(`✅ La cédula *${cedula}* ya está registrada. Bienvenido de nuevo.`);
+
+            const perros = await getDogsFromCedula(cedula);
+
+            if (perros.length > 0) {
+                await flowDynamic("📋 Estos son tus peluditos registrados. ¿Con cuál quieres continuar?");
+
+                // Mostrar botones con hasta 2 perros + opción de agregar otro
+                const botones = perros.slice(0, 2).map(p => ({ body: p.nombre }));
+                botones.push({ body: '➕ Agregar nuevo peludito' });
+
+                await flowDynamic([
+                    {
+                        body: "Selecciona un peludito:",
+                        buttons: botones
+                    }
+                ]);
+
+                // Guardar lista para posterior comparación
+                conversations[ctx.from].dogs = perros;
+                return; // Espera captura
+            } else {
+                await flowDynamic("😅 No encontramos peluditos registrados aún.");
+                return gotoFlow(i1);
+            }
+        } else {
+            return gotoFlow(e1);
+        }
+    })
+    .addAnswer('', { capture: true }) // Captura la selección
+    .addAction(async (ctx, { flowDynamic, gotoFlow }) => {
+        const seleccion = ctx.body.trim();
+        const userId = ctx.from;
+        const perrosGuardados = conversations[userId].dogs || [];
+
+        if (seleccion === '➕ Agregar nuevo peludito') {
+            return gotoFlow(i1);
+        }
+
+        const match = perrosGuardados.find(p => p.nombre.toLowerCase() === seleccion.toLowerCase());
+
+        if (match) {
+            conversations[userId].selectedDog = match;
+
+            await flowDynamic(`🐶 ¡Perfecto! Vamos a continuar con *${match.nombre}*.`);
+            return gotoFlow(l1); // o el siguiente paso
+        }
+
+        await flowDynamic("⚠️ No reconocí ese nombre. Intenta nuevamente.");
         return gotoFlow(c1);
     });
+
+
+
 
 const e1 = addKeyword('write_cc')
 .addAnswer(`Upss, no apareces registrado, vuelve a escribir tu cedula`)
@@ -142,57 +192,80 @@ const i1 = addKeyword('write_cc_new')
     .addAnswer('', { capture: true })
     .addAction(async (ctx, { gotoFlow }) => {
         const nombre = ctx.body.trim();
+        const userId = ctx.from;
 
-        if (!ctx.state) ctx.state = {};
-        conversations[ctx.from].newDog = nombre
+        conversations[userId] = conversations[userId] || new conversation();
+        conversations[userId].dogs = conversations[userId].dogs || [];
 
+        conversations[userId].selectedDog = { nombre, descripcion: '' }; // Temporal
         return gotoFlow(k1);
     });
 
+
 const k1 = addKeyword('write_pet_description')
     .addAction(async (ctx, { flowDynamic }) => {
-        const petName = conversations[ctx.from].newDog || '[vacio]';
-        conversations[ctx.from].selectedDog = petName
-
+        const petName = conversations[ctx.from].selectedDog?.nombre || '[vacio]';
         await flowDynamic(`Describenos a *${petName}*: ¿Qué raza es, cuántos años tiene, si es sociable y cualquier consideración adicional que debamos saber?`);
     })
     .addAnswer('', { capture: true })
     .addAction(async (ctx, { gotoFlow }) => {
         const descripcion = ctx.body.trim();
+        const userId = ctx.from;
 
-        if (!ctx.state) ctx.state = {};
-        conversations[ctx.from].newDogDescription = descripcion
-        
+        // Guardar descripción en el objeto seleccionado
+        if (conversations[userId].selectedDog) {
+            conversations[userId].selectedDog.descripcion = descripcion;
+        }
+
         return gotoFlow(k1_register);
     });
+
 
 const k1_register = addKeyword('write_pet_description')
         .addAction(async (ctx, { flowDynamic }) => {
             const userId = ctx.from;
-            const petName = conversations[userId].newDog || '[vacio]';
-            const descripcion = conversations[userId].newDogDescription || '[sin descripción]';
-            const cedula = conversations[userId].cc;
+            const selectedDog = conversations[userId].selectedDog;
+            const cedula = conversations[userId].cc.toString();
     
-            const insertResult = await insertNewClientWithPet(cedula.toString(), petName, descripcion);
-    
-            if (insertResult.added) {
-                await flowDynamic(`🎉 *${petName}* ha sido registrado exitosamente junto a tu cédula.`);
-            } else if (insertResult.exists) {
-                await flowDynamic(`ℹ️ Ya existía un registro para esta cédula.`);
-            } else {
-                await flowDynamic(`⚠️ Hubo un error al registrar. Intenta más tarde.`);
+            if (!selectedDog) {
+                await flowDynamic("⚠️ No tengo registrado el nombre del perrito. Intenta de nuevo.");
+                return;
             }
+    
+            const nuevoPerro = {
+                nombre: selectedDog.nombre,
+                descripcion: selectedDog.descripcion
+            };
+    
+            const yaRegistrado = await findCedulaInSheet(cedula);
+    
+            if (yaRegistrado) {
+                const result = await addDogToExistingClient(cedula, nuevoPerro);
+                if (result.updated) {
+                    await flowDynamic(`🐶 ¡Tu nuevo perrito *${nuevoPerro.nombre}* fue agregado con éxito!`);
+                } else {
+                    await flowDynamic(`⚠️ Ocurrió un error al agregar a *${nuevoPerro.nombre}*. Intenta de nuevo.`);
+                }
+            } else {
+                await insertNewClientWithPet(cedula, nuevoPerro.nombre, nuevoPerro.descripcion);
+                await flowDynamic(`🎉 *${nuevoPerro.nombre}* ha sido registrado exitosamente.`);
+            }
+    
+            // Guardar también localmente
+            conversations[userId].dogs = conversations[userId].dogs || [];
+            conversations[userId].dogs.push(nuevoPerro);
         })
         .addAction(async (ctx, { gotoFlow }) => {
             return gotoFlow(l1);
         });
+    
     
 
 
 const l1 = addKeyword('write_cc')
   .addAction(async (ctx, { flowDynamic }) => {
     const userId = ctx.from;
-    const dogName = conversations[userId]?.selectedDog || 'tu peludito';
+    const dogName = conversations[userId]?.selectedDog.nombre || 'tu peludito';
     console.log(conversations[ctx.from]);
     
     await flowDynamic([
@@ -232,15 +305,14 @@ const m1 = addKeyword('write_cc')
   .addAnswer('', { capture: true })
   .addAction(async (ctx, { gotoFlow }) => {
     const choice = ctx.body;
-
+    conversations[ctx.from].tipoServicio = "Paseo"
     if (choice === 'Media hora') {
-        conversations[ctx.from].tipoServicio = "Paseo"
+        conversations[ctx.from].tiempoServicio = "Media hora"
         return gotoFlow(q1);}
     if (choice === 'Una hora') {
-        conversations[ctx.from].tipoServicio = "Paseo"
+        conversations[ctx.from].tiempoServicio = "1 Hora"
         return gotoFlow(q1);}
     if (choice === 'Más de una hora') {
-        conversations[ctx.from].tipoServicio = "Paseo"
         return gotoFlow(o1);}
     return gotoFlow(b1_repeat);
   });
@@ -250,7 +322,7 @@ const m2 = addKeyword('write_cc')
 
     await flowDynamic([
       {
-        body: `¿Cuánto tiempo necesitas que ${conversations[ctx.from].selectedDog} mascota se quede en la casa del cuidador? `,
+        body: `¿Cuánto tiempo necesitas que ${conversations[ctx.from].selectedDog.nombre} mascota se quede en la casa del cuidador? `,
         buttons: [
           { body: 'Medio dia' },
           { body: 'Un dia' },
@@ -262,67 +334,83 @@ const m2 = addKeyword('write_cc')
   .addAnswer('', { capture: true })
   .addAction(async (ctx, { gotoFlow }) => {
     const choice = ctx.body;
-
+    conversations[ctx.from].tipoServicio = "Cuidado"
     if (choice === 'Medio dia') {
-        conversations[ctx.from].tipoServicio = "Cuidado"
+        conversations[ctx.from].tiempoServicio = "Medio dia"
         return gotoFlow(q1);}
     if (choice === 'Un dia') {
-        conversations[ctx.from].tipoServicio = "Cuidado"
+        conversations[ctx.from].tiempoServicio = "Un dia"
         return gotoFlow(q1);}
     if (choice === 'Varios dias') {
-        conversations[ctx.from].tipoServicio = "Cuidado"
         return gotoFlow(o2);}
     return gotoFlow(b1_repeat);
   });
 
 const o1 = addKeyword('write_pet_description')
   .addAction(async (ctx, { flowDynamic }) => {
-
-      await flowDynamic(`¿Cuantas horas?`);
+      await flowDynamic(`¿Cuántas horas necesitas el servicio? (Escribe solo un número del 1 al 12)`);
   })
   .addAnswer('', { capture: true })
-  .addAction(async (ctx, { gotoFlow }) => {
+  .addAction(async (ctx, { flowDynamic, gotoFlow }) => {
       const cita = ctx.body.trim();
+      const esNumero = /^\d+$/.test(cita);
+      const numero = parseInt(cita);
 
-      if (!ctx.state) ctx.state = {};
-      conversations[ctx.from].tiempoServicio = cita
+      if (!esNumero || numero < 1 || numero > 12) {
+          await flowDynamic("❌ Por favor, escribe un número válido entre 1 y 12.");
+          return gotoFlow(o1); // Repite la pregunta
+      }
+
+      conversations[ctx.from].tiempoServicio = cita;
 
       return gotoFlow(q1);
   });
 
 const o2 = addKeyword('write_pet_description')
   .addAction(async (ctx, { flowDynamic }) => {
-      const petName = conversations[ctx.from].newDog || '[vacio]';
+      const petName = conversations[ctx.from].selectedDog?.nombre || '[vacio]';
 
-      await flowDynamic(`¿Cuantos dias?`);
+      await flowDynamic(`¿Cuántos días necesitas que *${petName}* se quede? (Escribe solo el número del 1 al 30)`);
   })
   .addAnswer('', { capture: true })
-  .addAction(async (ctx, { gotoFlow }) => {
+  .addAction(async (ctx, { flowDynamic, gotoFlow }) => {
       const cita = ctx.body.trim();
+      const esNumero = /^\d+$/.test(cita);
+      const numero = parseInt(cita);
 
-      if (!ctx.state) ctx.state = {};
-      conversations[ctx.from].tiempoServicio = cita
+      if (!esNumero || numero < 1 || numero > 30) {
+          await flowDynamic("❌ Por favor, ingresa un número válido entre 1 y 30.");
+          return gotoFlow(o2); // Repite la pregunta
+      }
+
+      conversations[ctx.from].tiempoServicio = cita;
 
       return gotoFlow(q1);
   });
 
 const q1 = addKeyword('write_pet_description')
   .addAction(async (ctx, { flowDynamic }) => {
-      const petName = conversations[ctx.from].newDog || '[vacio]';
+      const petName = conversations[ctx.from].selectedDog?.nombre || '[vacio]';
 
-      await flowDynamic(`¿Para cuando quisieras el servicio? Indica hora y fecha (dd/mm/hh)`);
+      await flowDynamic(`¿Para cuándo quisieras el servicio para *${petName}*? Indica hora y fecha en el formato 👉 *dd/mm/hh* (por ejemplo: 25/04/14)`);
   })
   .addAnswer('', { capture: true })
-  .addAction(async (ctx, { gotoFlow }) => {
+  .addAction(async (ctx, { flowDynamic, gotoFlow }) => {
       const cita = ctx.body.trim();
 
-      if (!ctx.state) ctx.state = {};
-      conversations[ctx.from].inicioServicio = cita
+      // Validar formato dd/mm/hh
+      const regexFecha = /^(0?[1-9]|[12][0-9]|3[01])\/(0?[1-9]|1[012])\/([0-1]?[0-9]|2[0-3])$/;
 
-      console.log(conversations[ctx.from]);
+      if (!regexFecha.test(cita)) {
+          await flowDynamic("❌ Formato inválido. Por favor, escribe la fecha y hora como *dd/mm/hh* (ejemplo: 25/04/14)");
+          return gotoFlow(q1);
+      }
+
+      conversations[ctx.from].inicioServicio = cita;
 
       return gotoFlow(s1);
   });
+
 
 const s1 = addKeyword('write_pet_description')
   .addAction(async (ctx, { flowDynamic }) => {
@@ -334,7 +422,7 @@ const s1 = addKeyword('write_pet_description')
       const cita = ctx.body.trim();
 
       if (!ctx.state) ctx.state = {};
-      conversations[ctx.from].inicioServicio = cita
+      conversations[ctx.from].address = cita
 
       console.log(conversations[ctx.from]);
 
@@ -346,7 +434,16 @@ const u1 = addKeyword('write_cc')
 
     await flowDynamic([
       {
-        body: `La información es correcta? (Aqui va todo lo demas) `,
+        body: `Ya casi, vamos a confirmar tus datos:
+
+Nombre del peludito: ${conversations[ctx.from].selectedDog.nombre}
+Dirección: ${conversations[ctx.from].address}
+Inicio de servicio: ${conversations[ctx.from].inicioServicio}
+Horas de ${conversations[ctx.from].tipoServicio}: ${conversations[ctx.from].tiempoServicio}
+
+Total: {servicio.hora.precio}
+
+¿Estas de acuerdo con la información?`,
         buttons: [
           { body: 'Si' },
           { body: 'No' },
