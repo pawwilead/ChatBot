@@ -1,6 +1,6 @@
 import { addKeyword, EVENTS } from "@builderbot/bot";
 import { conversation } from "~/model/models";
-import { findCedulaInSheet } from "~/services/googleSheetsService";
+import { findCedulaInSheet, insertNewClient, insertNewClientWithPet } from "~/services/googleSheetsService";
 
 const conversations: { [key: string]: conversation } = {};
 
@@ -152,6 +152,7 @@ const i1 = addKeyword('write_cc_new')
 const k1 = addKeyword('write_pet_description')
     .addAction(async (ctx, { flowDynamic }) => {
         const petName = conversations[ctx.from].newDog || '[vacio]';
+        conversations[ctx.from].selectedDog = petName
 
         await flowDynamic(`Describenos a *${petName}*: ¿Qué raza es, cuántos años tiene, si es sociable y cualquier consideración adicional que debamos saber?`);
     })
@@ -161,16 +162,39 @@ const k1 = addKeyword('write_pet_description')
 
         if (!ctx.state) ctx.state = {};
         conversations[ctx.from].newDogDescription = descripcion
-        conversations[ctx.from].selectedDog = descripcion
-
-        return gotoFlow(l1);
+        
+        return gotoFlow(k1_register);
     });
+
+const k1_register = addKeyword('write_pet_description')
+        .addAction(async (ctx, { flowDynamic }) => {
+            const userId = ctx.from;
+            const petName = conversations[userId].newDog || '[vacio]';
+            const descripcion = conversations[userId].newDogDescription || '[sin descripción]';
+            const cedula = conversations[userId].cc;
+    
+            const insertResult = await insertNewClientWithPet(cedula.toString(), petName, descripcion);
+    
+            if (insertResult.added) {
+                await flowDynamic(`🎉 *${petName}* ha sido registrado exitosamente junto a tu cédula.`);
+            } else if (insertResult.exists) {
+                await flowDynamic(`ℹ️ Ya existía un registro para esta cédula.`);
+            } else {
+                await flowDynamic(`⚠️ Hubo un error al registrar. Intenta más tarde.`);
+            }
+        })
+        .addAction(async (ctx, { gotoFlow }) => {
+            return gotoFlow(l1);
+        });
+    
+
 
 const l1 = addKeyword('write_cc')
   .addAction(async (ctx, { flowDynamic }) => {
     const userId = ctx.from;
     const dogName = conversations[userId]?.selectedDog || 'tu peludito';
-
+    console.log(conversations[ctx.from]);
+    
     await flowDynamic([
       {
         body: `¿Qué quieres para *${dogName}*?`,
@@ -408,6 +432,7 @@ export {
     e3,
     i1,
     k1,
+    k1_register,
     l1,
     m1,
     m2,
