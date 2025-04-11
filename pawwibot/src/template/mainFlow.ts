@@ -1,6 +1,7 @@
 import { addKeyword, EVENTS } from "@builderbot/bot";
 import { conversation } from "~/model/models";
 import { addDogToExistingClient, findCedulaInSheet, insertNewClient, insertNewClientWithPet, getDogsFromCedula } from "~/services/googleSheetsService";
+import { getLocalidadDesdeDireccion } from "~/services/openStreetMap";
 
 const conversations: { [key: string]: conversation } = {};
 
@@ -97,8 +98,10 @@ const b1_repeat = addKeyword('ask_registered_repeat')
         if (existe) {
             await flowDynamic(`✅ La cédula *${cedula}* ya está registrada. Bienvenido de nuevo.`);
 
+            //TODO:
             const perros = await getDogsFromCedula(cedula);
-
+            console.log(perros);
+            
             if (perros.length > 0) {
                 await flowDynamic("📋 Estos son tus peluditos registrados. ¿Con cuál quieres continuar?");
 
@@ -412,22 +415,35 @@ const q1 = addKeyword('write_pet_description')
   });
 
 
-const s1 = addKeyword('write_pet_description')
+  const s1 = addKeyword('write_pet_description')
   .addAction(async (ctx, { flowDynamic }) => {
-
-      await flowDynamic(`Indicanos tu dirección`);
+      await flowDynamic(`Indícanos tu dirección`);
   })
   .addAnswer('', { capture: true })
-  .addAction(async (ctx, { gotoFlow }) => {
-      const cita = ctx.body.trim();
+  .addAction(async (ctx, { gotoFlow, flowDynamic }) => {
+      const direccion = ctx.body.trim();
 
       if (!ctx.state) ctx.state = {};
-      conversations[ctx.from].address = cita
+
+      // Guardamos la dirección original
+      conversations[ctx.from].address = direccion;
+
+      // Obtenemos la localidad/barrio
+      const localidad = await getLocalidadDesdeDireccion(direccion);
+      console.log(localidad);
+
+      if (localidad) {
+          await flowDynamic(`(JUST FOR TESTS)📍 Hemos detectado la zona: ${localidad}`);
+          //conversations[ctx.from].localidad = localidad;
+      } else {
+          await flowDynamic(`⚠️ No pudimos detectar tu zona exacta, pero seguiremos con la dirección que nos diste.`);
+      }
 
       console.log(conversations[ctx.from]);
 
       return gotoFlow(u1);
   });
+
 
 const u1 = addKeyword('write_cc')
   .addAction(async (ctx, { flowDynamic }) => {
