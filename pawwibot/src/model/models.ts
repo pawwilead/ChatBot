@@ -1,5 +1,6 @@
 export class conversation {
-    id: number
+    id: string
+    name: string
     cc: number
     address: string
 

@@ -1,18 +1,29 @@
 import { addKeyword, EVENTS } from "@builderbot/bot";
 import { conversation } from "~/model/models";
-import { addDogToExistingClient, findCedulaInSheet, insertNewClient, insertNewClientWithPet, getDogsFromCedula } from "~/services/googleSheetsService";
+import { addDogToExistingClient, findCedulaInSheet, insertNewClient, insertNewClientWithPet, getDogsFromCedula, insertClientBasicInfo } from "~/services/googleSheetsService";
 import { getLocalidadDesdeDireccion } from "~/services/openStreetMap";
 
 const conversations: { [key: string]: conversation } = {};
 
 const start = addKeyword(EVENTS.WELCOME)
-    .addAnswer(`Guauuu, bienvenido/a a Pawwi, soy Bimba. ¡Existimos para que tú estés tranqui! Nos encargamos de encontrar cuidadores confiables en tu zona. ¿Qué quieres hacer hoy?`, {
-        buttons: [
-            { body: 'Buscar cuidador' },
-            { body: 'Ser cuidador' }
-        ]
+    .addAction(async (ctx, { gotoFlow, flowDynamic }) => {
+        const userId = ctx.from;
+
+        //La idea es dirigir de una a f1 si el numero ya esta registrado con un perro
+        const existe = await findCedulaInSheet(userId);
+
+        console.log("¿Usuario ya registrado?:", existe);
+
+        //TODO: Si ya esta registrado, decir, hola de nuevo bla bla bla
+        await flowDynamic([{
+            body: `Guauuu, bienvenido/a a Pawwi, soy Bimba. ¡Existimos para que tú estés tranqui! Nos encargamos de encontrar cuidadores confiables en tu zona. ¿Qué quieres hacer hoy?`,
+            buttons: [
+                { body: 'Buscar cuidador' },
+                { body: 'Ser cuidador' }
+            ]
+        }]);
     })
-    .addAnswer('', { capture: true })
+    .addAnswer('', { capture: true }) // Para capturar la opción seleccionada
     .addAction(async (ctx, { flowDynamic, gotoFlow }) => {
         const choice = ctx.body;
 
@@ -24,6 +35,8 @@ const start = addKeyword(EVENTS.WELCOME)
 
         return gotoFlow(start_repeat);
     });
+
+
 
 // 🔁 Repetición en caso de opción inválida
 const start_repeat = addKeyword('main_repeat')
@@ -208,7 +221,11 @@ const i1 = addKeyword('write_cc_new')
 const k1 = addKeyword('write_pet_description')
     .addAction(async (ctx, { flowDynamic }) => {
         const petName = conversations[ctx.from].selectedDog?.nombre || '[vacio]';
-        await flowDynamic(`Describenos a *${petName}*: ¿Qué raza es, cuántos años tiene, si es sociable y cualquier consideración adicional que debamos saber?`);
+        await flowDynamic(`Describenos a *${petName}*: ¿Qué raza es?
+¿cuántos años tiene?,
+¿Cuabto pesa?
+¿Es sociable?
+Mencionanos tambien cualquier consideración adicional que debamos saber`);
     })
     .addAnswer('', { capture: true })
     .addAction(async (ctx, { gotoFlow }) => {
@@ -417,7 +434,7 @@ const q1 = addKeyword('write_pet_description')
 
   const s1 = addKeyword('write_pet_description')
   .addAction(async (ctx, { flowDynamic }) => {
-      await flowDynamic(`Indícanos tu dirección`);
+      await flowDynamic(`Indícanos tu dirección y tu barrio`);
   })
   .addAnswer('', { capture: true })
   .addAction(async (ctx, { gotoFlow, flowDynamic }) => {
@@ -495,11 +512,35 @@ const c2 = addKeyword('write_cc_new')
             console.log('🆔 Conversación ID:', userId);
             console.log('🗂 Conversación actual:', conversations[userId]);
 
-            return gotoFlow(e3);
+            return gotoFlow(name);
         }
 
         await flowDynamic("❌ Lo que ingresaste no parece una cédula válida. Intenta de nuevo por favor.");
         return gotoFlow(c2);
+    });
+
+    const name = addKeyword('write_cc_new')
+    .addAnswer(`¿Cuál es tu nombre?`)
+    .addAnswer('', { capture: true })
+    .addAction(async (ctx, { flowDynamic, gotoFlow }) => {
+        const nombre = ctx.body.trim();
+        conversations[ctx.from].name = ctx.body.trim()
+
+        // TODO: ESTO EN K1 pero hay que revisar el flujo cuando ya estaba registrado
+        const userData = conversations[ctx.from];
+        userData.name = nombre;
+        userData.id = ctx.from
+
+        // Llamamos a la función para insertar en Sheets
+        const resultado = await insertClientBasicInfo(userData);
+
+        if (resultado.added) {
+            console.log(`✅ Cliente agregado exitosamente a la hoja.`);
+        } else {
+            console.error(`❌ No se pudo agregar el cliente.`);
+        }
+
+        return gotoFlow(i1);
     });
 
 const e3 = addKeyword('write_cc_check')
@@ -543,6 +584,7 @@ export {
     e1,
     e2,
     e3,
+    name,
     i1,
     k1,
     k1_register,

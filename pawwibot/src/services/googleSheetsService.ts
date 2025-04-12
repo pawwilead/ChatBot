@@ -1,6 +1,7 @@
 import { google } from 'googleapis';
 import path from 'path';
 import { JWT } from 'google-auth-library';
+import { conversation } from '~/model/models';
 
 const sheets = google.sheets("v4");
 
@@ -14,7 +15,85 @@ async function getSheetClient() {
     return { sheets, authClient };
 }
 
-export async function findCedulaInSheet(cedula) {
+export async function getClientBasicInfoByCC(cedula: string): Promise<{
+    id: number,
+    name: string,
+    cc: number,
+    address: string
+} | null> {
+    try {
+        const { sheets, authClient } = await getSheetClient();
+        const spreadsheetId = "1blH9C1I4CSf2yJ_8AlM9a0U2wBFh7RSiDYO8-XfKxLQ";
+        const range = "usersDB!A1:D1000"; // A: id, B: name, C: cc, D: address
+
+        const response = await sheets.spreadsheets.values.get({
+            spreadsheetId,
+            range,
+            auth: authClient
+        });
+
+        const rows = response.data.values || [];
+
+        // Buscar por cédula en columna C (índice 2)
+        for (let i = 1; i < rows.length; i++) {
+            if (rows[i][2] === cedula || rows[i][2] === String(cedula)) {
+                return {
+                    id: Number(rows[i][0]),
+                    name: rows[i][1],
+                    cc: Number(rows[i][2]),
+                    address: rows[i][3]
+                };
+            }
+        }
+
+        // No encontrado
+        return null;
+    } catch (error) {
+        console.error("❌ Error al obtener cliente:", error);
+        return null;
+    }
+}
+
+
+export async function insertClientBasicInfo(client: conversation) {
+    try {
+        const { sheets, authClient } = await getSheetClient();
+        const spreadsheetId = "1blH9C1I4CSf2yJ_8AlM9a0U2wBFh7RSiDYO8-XfKxLQ";
+        const range = "usersDB"; // se usa solo el nombre de la hoja
+
+        // Formatear los datos: cada valor en una celda de la misma fila
+        const values = [[
+            client.id,
+            client.name,
+            client.cc,
+            client.address
+        ]];
+
+        const appendResponse = await sheets.spreadsheets.values.append({
+            spreadsheetId,
+            range,
+            valueInputOption: "RAW",
+            insertDataOption: "INSERT_ROWS",
+            requestBody: {
+                values
+            },
+            auth: authClient
+        });
+
+        const updatedRange = appendResponse.data?.updates?.updatedRange;
+
+        if (updatedRange) {
+            console.log(`✅ Cliente insertado en rango: ${updatedRange}`);
+        }
+
+        return { added: true };
+    } catch (error) {
+        console.error("❌ Error al insertar cliente:", error);
+        return { added: false, error };
+    }
+}
+
+export async function findCedulaInSheet(id) {
     try {
         const { sheets, authClient } = await getSheetClient();
         const spreadsheetId = "1blH9C1I4CSf2yJ_8AlM9a0U2wBFh7RSiDYO8-XfKxLQ";
@@ -30,7 +109,9 @@ export async function findCedulaInSheet(cedula) {
 
         // Recorremos desde la segunda fila (i = 1)
         for (let i = 1; i < rows.length; i++) {
-            if (rows[i][0] === cedula) {
+            //console.log(rows[i][0]);
+            
+            if (rows[i][0] === id) {
                 
                 return true;
             }
@@ -118,14 +199,14 @@ export async function insertNewClientWithPet(cedula: string, nombrePerro: string
             descripcion: descripcion
         });
 
-        // Agregar nueva fila con cédula + JSON del perro
+        // Agregar nueva fila: cedula en A, campos vacíos en B-D, perroJson en E
         const appendResponse = await sheets.spreadsheets.values.append({
             spreadsheetId,
             range: "usersDB",
             valueInputOption: "RAW",
             insertDataOption: "INSERT_ROWS",
             requestBody: {
-                values: [[cedula, perroJson]]
+                values: [[cedula, "", "", "", perroJson]]
             },
             auth: authClient
         });
@@ -142,6 +223,7 @@ export async function insertNewClientWithPet(cedula: string, nombrePerro: string
         return { exists: false, added: false, error: true };
     }
 }
+
 
 export async function addDogToExistingClient(cedula: string, nuevoPerro: { nombre: string, descripcion: string }) {
     try {
