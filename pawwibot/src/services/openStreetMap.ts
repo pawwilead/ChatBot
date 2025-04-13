@@ -27,3 +27,26 @@ export async function getLocalidadDesdeDireccion(direccion: string): Promise<str
 
   return null;
 }
+
+export async function getCiudadDesdeDireccion(direccion: string): Promise<string | null> {
+  const query = encodeURIComponent(`${direccion}, Colombia`);
+  const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&q=${query}`;
+
+  try {
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'PawwiBot/1.0'
+      }
+    });
+
+    const data = await res.json() as NominatimResult[];
+
+    if (data.length > 0 && data[0].address) {
+      return data[0].address.city || data[0].address.town || data[0].address.village || null;
+    }
+  } catch (err) {
+    console.error('Error buscando ciudad:', err);
+  }
+
+  return null;
+}

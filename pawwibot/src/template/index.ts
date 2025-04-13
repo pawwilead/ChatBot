@@ -1,17 +1,17 @@
 import { createFlow } from "@builderbot/bot";
 import {
+    init,
+    userRegistered,
+    userRegistered_repeat,
     start,
     start_repeat,
-    b1,
-    b1_repeat,
-    c1,
-    c2,
-    e1,
-    e2,
     e3,
     name,
     i1,
-    k1,
+    k1_raza,
+    k1_edad,
+    k1_peso,
+    k1_consideraciones,
     k1_register,
     l1,
     m1,
@@ -19,23 +19,25 @@ import {
     o1,
     o2,
     q1,
+    q1_hora,
     s1,
-    u1
+    u1,
+    c2
 } from "./mainFlow";
 
 export default createFlow([
+    init,
+    userRegistered,
+    userRegistered_repeat,
     start,
     start_repeat,
-    b1,
-    b1_repeat,
-    c1,
-    c2,
-    e1,
-    e2,
     e3,
     name,
     i1,
-    k1,
+    k1_raza,
+    k1_edad,
+    k1_peso,
+    k1_consideraciones,
     k1_register,
     l1,
     m1,
@@ -43,6 +45,8 @@ export default createFlow([
     o1,
     o2,
     q1,
+    q1_hora,
     s1,
-    u1
+    u1,
+    c2
 ]);

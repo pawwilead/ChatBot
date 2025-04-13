@@ -1,20 +1,147 @@
 import { addKeyword, EVENTS } from "@builderbot/bot";
 import { conversation } from "~/model/models";
-import { addDogToExistingClient, findCedulaInSheet, insertNewClient, insertNewClientWithPet, getDogsFromCedula, insertClientBasicInfo } from "~/services/googleSheetsService";
-import { getLocalidadDesdeDireccion } from "~/services/openStreetMap";
+import { findCelInSheet, insertClientBasicInfo, insertLeadRow, updateDogsForClient } from "~/services/googleSheetsService";
+import { getCiudadDesdeDireccion, getLocalidadDesdeDireccion } from "~/services/openStreetMap";
 
 const conversations: { [key: string]: conversation } = {};
+
+const init = addKeyword(EVENTS.WELCOME)
+    .addAction(async (ctx, { gotoFlow, flowDynamic }) => {
+        const userId = ctx.from;
+        const resultado = await findCelInSheet(userId);
+
+        if (resultado.exists && resultado.userData) {
+            const [id, name, cc, petsJson] = resultado.userData;
+
+            conversations[userId] = new conversation();
+            conversations[userId].id = id;
+            conversations[userId].cc = parseInt(cc);
+            conversations[userId].name = name;
+            conversations[userId].address = "";
+            conversations[userId].dogs = [];
+
+            try {
+                const parsed = JSON.parse(petsJson || "{}");
+                if (Array.isArray(parsed)) {
+                    conversations[userId].dogs = parsed;
+                } else if (parsed.nombre) {
+                    conversations[userId].dogs = [parsed]; // convertir a lista
+                }
+            } catch (e) {
+                console.error("🐾 Error al parsear los perros:", e);
+                conversations[userId].dogs = [];
+            }
+
+            console.log("✅ Usuario recuperado con datos:", conversations[userId]);
+            return gotoFlow(userRegistered);
+        }
+
+        return gotoFlow(start);
+    });
+
+const userRegistered = addKeyword(EVENTS.WELCOME)
+    .addAction(async (ctx, { gotoFlow, flowDynamic }) => {
+        const userId = ctx.from;
+
+        //La idea es dirigir de una a f1 si el numero ya esta registrado con un perro
+        const resultado = await findCelInSheet(userId);
+        console.log(resultado);
+        
+        if (resultado.exists && resultado.userData) {
+            const [, , , , petsJson] = resultado.userData;
+            try {
+                const parsed = JSON.parse(petsJson || "[]");
+                
+                conversations[userId].dogs = Array.isArray(parsed) ? parsed : [parsed];
+            } catch (e) {
+                conversations[userId].dogs = [];
+            }
+        }
+
+        // Construir botones actualizados
+        const buttons = conversations[userId].dogs.map(dog => ({ body: dog.nombre }));
+
+        if (conversations[userId].dogs.length < 3) {
+            buttons.push({ body: 'Agregar perro' });
+        }
+
+        await flowDynamic([{
+            body: `Guauuu, bienvenido/a de nuevo a Pawwi, soy Bimba. ¿A quién quieres que cuidemos?`,
+            buttons
+        }]);
+
+    })
+    .addAnswer('', { capture: true }) // Para capturar la opción seleccionada
+    .addAction(async (ctx, { flowDynamic, gotoFlow }) => {
+        const userId = ctx.from;
+        if (ctx.body === 'Agregar perro') return gotoFlow(i1);
+
+        const dog = conversations[userId].dogs.find(d => d.nombre === ctx.body);
+        if (dog) {
+            conversations[userId].selectedDog = dog;
+            //Temporal: Deberia ir a l1 pero como solo van a ser paseos en un inicio, salta directamente a paseo
+            //return gotoFlow(l1);
+            return gotoFlow(m1);
+        }
+
+        await flowDynamic('⚠️ No encontré ese nombre. Intenta de nuevo.');
+        return gotoFlow(userRegistered);
+});
+
+const userRegistered_repeat = addKeyword(EVENTS.WELCOME)
+    .addAction(async (ctx, { gotoFlow, flowDynamic }) => {
+        const userId = ctx.from;
+
+        //La idea es dirigir de una a f1 si el numero ya esta registrado con un perro
+        const resultado = await findCelInSheet(userId);
+
+        if (resultado.exists && resultado.userData) {
+            const [, , , , petsJson] = resultado.userData;
+            try {
+                const parsed = JSON.parse(petsJson || "[]");
+                conversations[userId].dogs = Array.isArray(parsed) ? parsed : [parsed];
+            } catch (e) {
+                conversations[userId].dogs = [];
+            }
+        }
+
+        const buttons = conversations[userId].dogs.map(dog => ({ body: dog.nombre }));
+
+        if (conversations[userId].dogs.length < 3) {
+            buttons.push({ body: 'Agregar perro' });
+        }
+
+        await flowDynamic([{
+            body: `¿A quién quieres que cuidemos?`,
+            buttons
+        }]);
+
+    })
+    .addAnswer('', { capture: true }) // Para capturar la opción seleccionada
+    .addAction(async (ctx, { flowDynamic, gotoFlow }) => {
+        const userId = ctx.from;
+        if (ctx.body === 'Agregar perro') return gotoFlow(i1);
+
+        const dog = conversations[userId].dogs.find(d => d.nombre === ctx.body);
+        if (dog) {
+            conversations[userId].selectedDog = dog;
+            //Temporal: Deberia ir a l1 pero como solo van a ser paseos en un inicio, salta directamente a paseo
+            //return gotoFlow(l1);
+            return gotoFlow(m1);
+        }
+
+        await flowDynamic('⚠️ No encontré ese nombre. Intenta de nuevo.');
+        return gotoFlow(userRegistered);
+});
 
 const start = addKeyword(EVENTS.WELCOME)
     .addAction(async (ctx, { gotoFlow, flowDynamic }) => {
         const userId = ctx.from;
 
-        //La idea es dirigir de una a f1 si el numero ya esta registrado con un perro
-        const existe = await findCedulaInSheet(userId);
+        const existe = await findCelInSheet(userId);
 
         console.log("¿Usuario ya registrado?:", existe);
 
-        //TODO: Si ya esta registrado, decir, hola de nuevo bla bla bla
         await flowDynamic([{
             body: `Guauuu, bienvenido/a a Pawwi, soy Bimba. ¡Existimos para que tú estés tranqui! Nos encargamos de encontrar cuidadores confiables en tu zona. ¿Qué quieres hacer hoy?`,
             buttons: [
@@ -23,11 +150,11 @@ const start = addKeyword(EVENTS.WELCOME)
             ]
         }]);
     })
-    .addAnswer('', { capture: true }) // Para capturar la opción seleccionada
+    .addAnswer('', { capture: true })
     .addAction(async (ctx, { flowDynamic, gotoFlow }) => {
         const choice = ctx.body;
 
-        if (choice === 'Buscar cuidador') return gotoFlow(b1);
+        if (choice === 'Buscar cuidador') return gotoFlow(c2);
         if (choice === 'Ser cuidador') {
             await flowDynamic('Para ser un Pawwier, por favor rellena el siguiente formulario: https://form.jotform.com/250937943404057');
             return;
@@ -50,7 +177,7 @@ const start_repeat = addKeyword('main_repeat')
     .addAction(async (ctx, { flowDynamic, gotoFlow }) => {
         const choice = ctx.body;
 
-        if (choice === 'Buscar cuidador') return gotoFlow(b1);
+        if (choice === 'Buscar cuidador') return gotoFlow(c2);
         if (choice === 'Ser cuidador') {
             await flowDynamic('Para ser un Pawwier, por favor rellena el siguiente formulario: {Link de formulario}');
             return;
@@ -59,151 +186,7 @@ const start_repeat = addKeyword('main_repeat')
         return gotoFlow(start_repeat);
     });
 
-const b1 = addKeyword('ask_registered')
-    .addAnswer(`¡Qué emoción! ¿Ya tienes registrado a tu peludito con nosotros?`, {
-        buttons: [
-            { body: 'Si' },
-            { body: 'No' }
-        ]
-    })
-    .addAnswer('', { capture: true })
-    .addAction(async (ctx, { gotoFlow }) => {
-        const choice = ctx.body;
-
-        if (choice === 'Si') return gotoFlow(c1);
-        if (choice === 'No') return gotoFlow(c2);
-        return gotoFlow(b1_repeat);
-    });
-
-// 🔁 Repetición si no responde con Si/No
-const b1_repeat = addKeyword('ask_registered_repeat')
-    .addAnswer(`Por favor, elige una de las opciones. ¿Ya tienes registrado a tu peludito con nosotros?`, {
-        buttons: [
-            { body: 'Si' },
-            { body: 'No' }
-        ]
-    })
-    .addAnswer('', { capture: true })
-    .addAction(async (ctx, { gotoFlow }) => {
-        const choice = ctx.body;
-
-        if (choice === 'Si') return gotoFlow(c1);
-        if (choice === 'No') return gotoFlow(c2);
-        return gotoFlow(b1_repeat);
-    });
-
-    const c1 = addKeyword('write_cc')
-    .addAnswer(`Por favor, ingresa tu número de cédula: (Escribe sin puntos ni letras)`)
-    .addAnswer('', { capture: true })
-    .addAction(async (ctx, { flowDynamic, gotoFlow }) => {
-        const cedula = ctx.body.trim();
-        const isValid = /^\d{6,10}$/.test(cedula);
-
-        if (!isValid) {
-            await flowDynamic("❌ Lo que ingresaste no parece una cédula válida. Intenta de nuevo por favor.");
-            return gotoFlow(c1);
-        }
-
-        const existe = await findCedulaInSheet(cedula);
-        conversations[ctx.from] = conversations[ctx.from] || new conversation();
-        conversations[ctx.from].cc = parseInt(cedula);
-
-        if (existe) {
-            await flowDynamic(`✅ La cédula *${cedula}* ya está registrada. Bienvenido de nuevo.`);
-
-            //TODO:
-            const perros = await getDogsFromCedula(cedula);
-            console.log(perros);
-            
-            if (perros.length > 0) {
-                await flowDynamic("📋 Estos son tus peluditos registrados. ¿Con cuál quieres continuar?");
-
-                // Mostrar botones con hasta 2 perros + opción de agregar otro
-                const botones = perros.slice(0, 2).map(p => ({ body: p.nombre }));
-                botones.push({ body: '➕ Agregar nuevo peludito' });
-
-                await flowDynamic([
-                    {
-                        body: "Selecciona un peludito:",
-                        buttons: botones
-                    }
-                ]);
-
-                // Guardar lista para posterior comparación
-                conversations[ctx.from].dogs = perros;
-                return; // Espera captura
-            } else {
-                await flowDynamic("😅 No encontramos peluditos registrados aún.");
-                return gotoFlow(i1);
-            }
-        } else {
-            return gotoFlow(e1);
-        }
-    })
-    .addAnswer('', { capture: true }) // Captura la selección
-    .addAction(async (ctx, { flowDynamic, gotoFlow }) => {
-        const seleccion = ctx.body.trim();
-        const userId = ctx.from;
-        const perrosGuardados = conversations[userId].dogs || [];
-
-        if (seleccion === '➕ Agregar nuevo peludito') {
-            return gotoFlow(i1);
-        }
-
-        const match = perrosGuardados.find(p => p.nombre.toLowerCase() === seleccion.toLowerCase());
-
-        if (match) {
-            conversations[userId].selectedDog = match;
-
-            await flowDynamic(`🐶 ¡Perfecto! Vamos a continuar con *${match.nombre}*.`);
-            return gotoFlow(l1); // o el siguiente paso
-        }
-
-        await flowDynamic("⚠️ No reconocí ese nombre. Intenta nuevamente.");
-        return gotoFlow(c1);
-    });
-
-
-
-
-const e1 = addKeyword('write_cc')
-.addAnswer(`Upss, no apareces registrado, vuelve a escribir tu cedula`)
-.addAnswer('', { capture: true })
-.addAction(async (ctx, { flowDynamic, gotoFlow }) => {
-    const cedula = ctx.body.trim();
-    const isValid = /^\d{6,10}$/.test(cedula);
-
-    if (isValid) {
-        const existe = await findCedulaInSheet(cedula);
-        if (existe) {
-            await flowDynamic(`✅ La cédula *${cedula}* ya está registrada. Bienvenido de nuevo.`);
-        } else {
-            return gotoFlow(e2);
-        }
-        return;
-    }
-
-    await flowDynamic("❌ Lo que ingresaste no parece una cédula válida. Intenta de nuevo por favor.");
-    return gotoFlow(c1);
-});
-
-const e2 = addKeyword('write_cc')
-    .addAnswer(`Al parecer no apareces registrado, asi que empecemos registrandote, el numero de cedula que ingresaste es correcto?`, {
-        buttons: [
-            { body: 'Si' },
-            { body: 'No' }
-        ]
-    })
-    .addAnswer('', { capture: true })
-    .addAction(async (ctx, { gotoFlow }) => {
-        const choice = ctx.body;
-
-        if (choice === 'Si') return gotoFlow(i1);
-        if (choice === 'No') return gotoFlow(c1);
-        return gotoFlow(b1_repeat);
-    });
-
-const i1 = addKeyword('write_cc_new')
+    const i1 = addKeyword('write_cc_new')
     .addAnswer(`Guauuu, que bien, ¿Cómo se llama tu peludito?`)
     .addAnswer('', { capture: true })
     .addAction(async (ctx, { gotoFlow }) => {
@@ -213,74 +196,115 @@ const i1 = addKeyword('write_cc_new')
         conversations[userId] = conversations[userId] || new conversation();
         conversations[userId].dogs = conversations[userId].dogs || [];
 
-        conversations[userId].selectedDog = { nombre, descripcion: '' }; // Temporal
-        return gotoFlow(k1);
+        conversations[userId].selectedDog = {
+            nombre,
+            raza: '',
+            edad: '',
+            peso: '',
+            descripcion: ''
+        };
+
+        return gotoFlow(k1_raza);
     });
 
-
-const k1 = addKeyword('write_pet_description')
-    .addAction(async (ctx, { flowDynamic }) => {
-        const petName = conversations[ctx.from].selectedDog?.nombre || '[vacio]';
-        await flowDynamic(`Describenos a *${petName}*: ¿Qué raza es?
-¿cuántos años tiene?,
-¿Cuabto pesa?
-¿Es sociable?
-Mencionanos tambien cualquier consideración adicional que debamos saber`);
+    const k1_raza = addKeyword('write_pet_description')
+    .addAction(async (ctx, { flowDynamic, gotoFlow }) => {
+        const petName = conversations[ctx.from]?.selectedDog?.nombre || '[vacio]';
+        await flowDynamic(`Perfecto, ahora cuéntame ¿Qué raza es *${petName}*?`);
     })
     .addAnswer('', { capture: true })
     .addAction(async (ctx, { gotoFlow }) => {
-        const descripcion = ctx.body.trim();
+        const raza = ctx.body.trim();
         const userId = ctx.from;
-
-        // Guardar descripción en el objeto seleccionado
         if (conversations[userId].selectedDog) {
-            conversations[userId].selectedDog.descripcion = descripcion;
+            conversations[userId].selectedDog.raza = raza;
         }
+        return gotoFlow(k1_edad);
+    });
 
+const k1_edad = addKeyword('write_pet_description')
+    .addAction(async (ctx, { flowDynamic, gotoFlow }) => {
+        const petName = conversations[ctx.from]?.selectedDog?.nombre || '[vacio]';
+        await flowDynamic(`¿Cuántos años tiene *${petName}*?`);
+    })
+    .addAnswer('', { capture: true })
+    .addAction(async (ctx, { gotoFlow }) => {
+        const edad = ctx.body.trim();
+        const userId = ctx.from;
+        if (conversations[userId].selectedDog) {
+            conversations[userId].selectedDog.edad = edad;
+        }
+        return gotoFlow(k1_peso);
+    });
+
+    const k1_peso = addKeyword('write_pet_description')
+    .addAction(async (ctx, { flowDynamic, gotoFlow }) => {
+        const petName = conversations[ctx.from]?.selectedDog?.nombre || '[vacio]';
+        await flowDynamic(`¿Cuánto pesa aproximadamente *${petName}*? (en kilogramos)`);
+    })
+    .addAnswer('', { capture: true })
+    .addAction(async (ctx, { gotoFlow }) => {
+        const peso = ctx.body.trim();
+        const userId = ctx.from;
+        if (conversations[userId].selectedDog) {
+            conversations[userId].selectedDog.peso = peso;
+        }
+        return gotoFlow(k1_consideraciones);
+    });
+
+
+const k1_consideraciones = addKeyword('write_pet_description')
+    .addAnswer(`¿Tienes alguna consideración especial que debamos saber? (Medicamentos, enfermedades, tratos especiales)`, { capture: true })
+    .addAction(async (ctx, { gotoFlow }) => {
+        const consideraciones = ctx.body.trim();
+        const userId = ctx.from;
+        if (conversations[userId].selectedDog) {
+            conversations[userId].selectedDog.descripcion = consideraciones;
+        }
         return gotoFlow(k1_register);
     });
 
 
 const k1_register = addKeyword('write_pet_description')
-        .addAction(async (ctx, { flowDynamic }) => {
-            const userId = ctx.from;
-            const selectedDog = conversations[userId].selectedDog;
-            const cedula = conversations[userId].cc.toString();
-    
-            if (!selectedDog) {
-                await flowDynamic("⚠️ No tengo registrado el nombre del perrito. Intenta de nuevo.");
-                return;
-            }
-    
-            const nuevoPerro = {
-                nombre: selectedDog.nombre,
-                descripcion: selectedDog.descripcion
-            };
-    
-            const yaRegistrado = await findCedulaInSheet(cedula);
-    
-            if (yaRegistrado) {
-                const result = await addDogToExistingClient(cedula, nuevoPerro);
-                if (result.updated) {
-                    await flowDynamic(`🐶 ¡Tu nuevo perrito *${nuevoPerro.nombre}* fue agregado con éxito!`);
-                } else {
-                    await flowDynamic(`⚠️ Ocurrió un error al agregar a *${nuevoPerro.nombre}*. Intenta de nuevo.`);
-                }
-            } else {
-                await insertNewClientWithPet(cedula, nuevoPerro.nombre, nuevoPerro.descripcion);
-                await flowDynamic(`🎉 *${nuevoPerro.nombre}* ha sido registrado exitosamente.`);
-            }
-    
-            // Guardar también localmente
-            conversations[userId].dogs = conversations[userId].dogs || [];
-            conversations[userId].dogs.push(nuevoPerro);
-        })
-        .addAction(async (ctx, { gotoFlow }) => {
-            return gotoFlow(l1);
-        });
-    
-    
+    .addAction(async (ctx, { flowDynamic }) => {
+        const userId = ctx.from;
+        const selectedDog = conversations[userId].selectedDog;
 
+        if (!selectedDog) {
+            await flowDynamic("⚠️ No tengo registrado el nombre del perrito. Intenta de nuevo.");
+            return;
+        }
+
+        // Agregar perro actual a la lista
+        conversations[userId].dogs.push(selectedDog);
+        conversations[userId].id = userId;
+
+        const yaExiste = await findCelInSheet(userId);
+
+        if (yaExiste.exists) {
+            // Actualizar la columna de perros
+            const result = await updateDogsForClient(userId, conversations[userId].dogs);
+            if (result.updated) {
+                await flowDynamic(`🐶 Agregamos a *${selectedDog.nombre}* a tu lista de peluditos.`);
+            } else {
+                await flowDynamic(`⚠️ Ocurrió un error al actualizar tu lista. Intenta más tarde.`);
+            }
+        } else {
+            // Insertar nueva fila
+            const result = await insertClientBasicInfo(conversations[userId]);
+            if (result.added) {
+                await flowDynamic(`🐾 ¡Tu peludito *${selectedDog.nombre}* fue registrado exitosamente!`);
+            } else {
+                await flowDynamic(`⚠️ Ocurrió un error al registrar a *${selectedDog.nombre}*. Intenta más tarde.`);
+            }
+        }
+    })
+    .addAction(async (ctx, { gotoFlow }) => {
+        //Temporal: Deberia ir a l1 pero como solo van a ser paseos en un inicio, salta directamente a paseo
+        //return gotoFlow(l1);
+
+        return gotoFlow(m1);
+    });
 
 const l1 = addKeyword('write_cc')
   .addAction(async (ctx, { flowDynamic }) => {
@@ -304,7 +328,7 @@ const l1 = addKeyword('write_cc')
 
     if (choice === 'Paseo') return gotoFlow(m1);
     if (choice === 'Cuidarlo en casa') return gotoFlow(m2);
-    return gotoFlow(b1_repeat);
+    return gotoFlow(l1);
   });
 
 const m1 = addKeyword('write_cc')
@@ -315,9 +339,9 @@ const m1 = addKeyword('write_cc')
       {
         body: `¿Cuánto tiempo necesitas el paseo?`,
         buttons: [
-          { body: 'Media hora' },
-          { body: 'Una hora' },
-          { body: 'Más de una hora' }
+          { body: 'Express (20 min)' },
+          { body: 'Medium (30 min)' },
+          { body: 'Jumbo (1 Hora)' }
         ]
       }
     ]);
@@ -326,15 +350,19 @@ const m1 = addKeyword('write_cc')
   .addAction(async (ctx, { gotoFlow }) => {
     const choice = ctx.body;
     conversations[ctx.from].tipoServicio = "Paseo"
-    if (choice === 'Media hora') {
-        conversations[ctx.from].tiempoServicio = "Media hora"
+    if (choice === 'Express (20 min)') {
+        conversations[ctx.from].tiempoServicio = "20 minutos"
+        conversations[ctx.from].precio = 7500
         return gotoFlow(q1);}
-    if (choice === 'Una hora') {
-        conversations[ctx.from].tiempoServicio = "1 Hora"
+    if (choice === 'Medium (30 min)') {
+        conversations[ctx.from].tiempoServicio = "30 minutos"
+        conversations[ctx.from].precio = 10000
         return gotoFlow(q1);}
-    if (choice === 'Más de una hora') {
-        return gotoFlow(o1);}
-    return gotoFlow(b1_repeat);
+    if (choice === 'Jumbo (1 Hora)') {
+        conversations[ctx.from].tiempoServicio = "60 minutos"
+        conversations[ctx.from].precio = 17000
+        return gotoFlow(q1);}
+    return gotoFlow(m1);
   });
 
 const m2 = addKeyword('write_cc')
@@ -363,7 +391,7 @@ const m2 = addKeyword('write_cc')
         return gotoFlow(q1);}
     if (choice === 'Varios dias') {
         return gotoFlow(o2);}
-    return gotoFlow(b1_repeat);
+    return gotoFlow(m2);
   });
 
 const o1 = addKeyword('write_pet_description')
@@ -378,7 +406,7 @@ const o1 = addKeyword('write_pet_description')
 
       if (!esNumero || numero < 1 || numero > 12) {
           await flowDynamic("❌ Por favor, escribe un número válido entre 1 y 12.");
-          return gotoFlow(o1); // Repite la pregunta
+          return gotoFlow(o1);
       }
 
       conversations[ctx.from].tiempoServicio = cita;
@@ -400,7 +428,7 @@ const o2 = addKeyword('write_pet_description')
 
       if (!esNumero || numero < 1 || numero > 30) {
           await flowDynamic("❌ Por favor, ingresa un número válido entre 1 y 30.");
-          return gotoFlow(o2); // Repite la pregunta
+          return gotoFlow(o2);
       }
 
       conversations[ctx.from].tiempoServicio = cita;
@@ -412,25 +440,47 @@ const q1 = addKeyword('write_pet_description')
   .addAction(async (ctx, { flowDynamic }) => {
       const petName = conversations[ctx.from].selectedDog?.nombre || '[vacio]';
 
-      await flowDynamic(`¿Para cuándo quisieras el servicio para *${petName}*? Indica hora y fecha en el formato 👉 *dd/mm/hh* (por ejemplo: 25/04/14)`);
+      await flowDynamic(`¿Para qué fecha quisieras el servicio para *${petName}*? Indícala en el formato 👉 *dd/mm* (por ejemplo: 25/04)`);
   })
   .addAnswer('', { capture: true })
   .addAction(async (ctx, { flowDynamic, gotoFlow }) => {
       const cita = ctx.body.trim();
 
-      // Validar formato dd/mm/hh
-      const regexFecha = /^(0?[1-9]|[12][0-9]|3[01])\/(0?[1-9]|1[012])\/([0-1]?[0-9]|2[0-3])$/;
+      // Validar formato dd/mm
+      const regexFecha = /^(0?[1-9]|[12][0-9]|3[01])\/(0?[1-9]|1[012])$/;
 
       if (!regexFecha.test(cita)) {
-          await flowDynamic("❌ Formato inválido. Por favor, escribe la fecha y hora como *dd/mm/hh* (ejemplo: 25/04/14)");
+          await flowDynamic("❌ Formato inválido. Por favor, escribe la fecha como *dd/mm* (ejemplo: 25/04)");
           return gotoFlow(q1);
       }
 
-      conversations[ctx.from].inicioServicio = cita;
+      conversations[ctx.from].fechaServicio = cita;
+
+      return gotoFlow(q1_hora);
+  });
+
+const q1_hora = addKeyword('write_pet_description')
+  .addAction(async (ctx, { flowDynamic }) => {
+      const petName = conversations[ctx.from].selectedDog?.nombre || '[vacio]';
+
+      await flowDynamic(`¿A qué hora quisieras que recogamos a *${petName}*? Indica la hora en el formato 👉 *hh:mm* (por ejemplo: 14:30)`);
+  })
+  .addAnswer('', { capture: true })
+  .addAction(async (ctx, { flowDynamic, gotoFlow }) => {
+      const hora = ctx.body.trim();
+
+      // Validar formato hh:mm (24 horas)
+      const regexHora = /^([01]?[0-9]|2[0-3]):([0-5][0-9])$/;
+
+      if (!regexHora.test(hora)) {
+          await flowDynamic("❌ Formato inválido. Por favor, escribe la hora como *hh:mm* (ejemplo: 14:30)");
+          return gotoFlow(q1_hora);
+      }
+
+      conversations[ctx.from].inicioServicio = hora;
 
       return gotoFlow(s1);
   });
-
 
   const s1 = addKeyword('write_pet_description')
   .addAction(async (ctx, { flowDynamic }) => {
@@ -447,20 +497,24 @@ const q1 = addKeyword('write_pet_description')
 
       // Obtenemos la localidad/barrio
       const localidad = await getLocalidadDesdeDireccion(direccion);
+      const ciudad = await getCiudadDesdeDireccion(direccion);
+      conversations[ctx.from].barrio = localidad;
+      conversations[ctx.from].ciudad = ciudad;
       console.log(localidad);
 
+      /*
       if (localidad) {
           await flowDynamic(`(JUST FOR TESTS)📍 Hemos detectado la zona: ${localidad}`);
           //conversations[ctx.from].localidad = localidad;
       } else {
           await flowDynamic(`⚠️ No pudimos detectar tu zona exacta, pero seguiremos con la dirección que nos diste.`);
       }
+        */
 
       console.log(conversations[ctx.from]);
 
       return gotoFlow(u1);
   });
-
 
 const u1 = addKeyword('write_cc')
   .addAction(async (ctx, { flowDynamic }) => {
@@ -471,10 +525,11 @@ const u1 = addKeyword('write_cc')
 
 Nombre del peludito: ${conversations[ctx.from].selectedDog.nombre}
 Dirección: ${conversations[ctx.from].address}
-Inicio de servicio: ${conversations[ctx.from].inicioServicio}
-Horas de ${conversations[ctx.from].tipoServicio}: ${conversations[ctx.from].tiempoServicio}
+Dia: ${conversations[ctx.from].fechaServicio}
+Hora de recogida: ${conversations[ctx.from].fechaServicio}
+Tiempo de ${conversations[ctx.from].tipoServicio}: ${conversations[ctx.from].tiempoServicio}
 
-Total: {servicio.hora.precio}
+Total: ${conversations[ctx.from].precio}
 
 ¿Estas de acuerdo con la información?`,
         buttons: [
@@ -490,10 +545,12 @@ Total: {servicio.hora.precio}
     console.log(conversations[ctx.from]);
     
     if (choice === 'Si') {
-        return gotoFlow(q1);}
+        await insertLeadRow(conversations[ctx.from]);
+        return gotoFlow(q1);
+    }
     if (choice === 'No') {
-        return gotoFlow(l1);}
-    return gotoFlow(b1_repeat);
+        return gotoFlow(userRegistered_repeat);}
+    return gotoFlow(u1);
   });
 
 // 🆕 Flujo para registro nuevo
@@ -525,21 +582,6 @@ const c2 = addKeyword('write_cc_new')
     .addAction(async (ctx, { flowDynamic, gotoFlow }) => {
         const nombre = ctx.body.trim();
         conversations[ctx.from].name = ctx.body.trim()
-
-        // TODO: ESTO EN K1 pero hay que revisar el flujo cuando ya estaba registrado
-        const userData = conversations[ctx.from];
-        userData.name = nombre;
-        userData.id = ctx.from
-
-        // Llamamos a la función para insertar en Sheets
-        const resultado = await insertClientBasicInfo(userData);
-
-        if (resultado.added) {
-            console.log(`✅ Cliente agregado exitosamente a la hoja.`);
-        } else {
-            console.error(`❌ No se pudo agregar el cliente.`);
-        }
-
         return gotoFlow(i1);
     });
 
@@ -574,26 +616,29 @@ const e3 = addKeyword('write_cc_check')
         return gotoFlow(e3);
     });
 
-export {
-    start,
-    start_repeat,
-    b1,
-    b1_repeat,
-    c1,
-    c2,
-    e1,
-    e2,
-    e3,
-    name,
-    i1,
-    k1,
-    k1_register,
-    l1,
-    m1,
-    m2,
-    o1,
-    o2,
-    q1,
-    s1,
-    u1
-};
+    export {
+        init,
+        userRegistered,
+        userRegistered_repeat,
+        start,
+        start_repeat,
+        e3,
+        name,
+        i1,
+        k1_raza,
+        k1_edad,
+        k1_peso,
+        k1_consideraciones,
+        k1_register,
+        l1,
+        m1,
+        m2,
+        o1,
+        o2,
+        q1,
+        q1_hora,
+        s1,
+        u1,
+        c2
+    };
+    
