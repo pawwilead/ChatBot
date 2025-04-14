@@ -339,7 +339,7 @@ const m1 = addKeyword('write_cc')
       {
         body: `¿Cuánto tiempo necesitas el paseo?`,
         buttons: [
-          { body: 'Express (20 min)' },
+          { body: 'Express (15 min)' },
           { body: 'Medium (30 min)' },
           { body: 'Jumbo (1 Hora)' }
         ]
@@ -350,8 +350,8 @@ const m1 = addKeyword('write_cc')
   .addAction(async (ctx, { gotoFlow }) => {
     const choice = ctx.body;
     conversations[ctx.from].tipoServicio = "Paseo"
-    if (choice === 'Express (20 min)') {
-        conversations[ctx.from].tiempoServicio = "20 minutos"
+    if (choice === 'Express (15 min)') {
+        conversations[ctx.from].tiempoServicio = "15 minutos"
         conversations[ctx.from].precio = 7500
         return gotoFlow(q1);}
     if (choice === 'Medium (30 min)') {
@@ -484,37 +484,34 @@ const q1_hora = addKeyword('write_pet_description')
 
   const s1 = addKeyword('write_pet_description')
   .addAction(async (ctx, { flowDynamic }) => {
-      await flowDynamic(`Indícanos tu dirección y tu barrio`);
+    await flowDynamic(`Indícanos tu dirección y tu barrio`);
   })
   .addAnswer('', { capture: true })
   .addAction(async (ctx, { gotoFlow, flowDynamic }) => {
-      const direccion = ctx.body.trim();
+    const direccion = ctx.body.trim();
 
-      if (!ctx.state) ctx.state = {};
+    if (!ctx.state) ctx.state = {};
 
-      // Guardamos la dirección original
-      conversations[ctx.from].address = direccion;
+    conversations[ctx.from].address = direccion;
 
-      // Obtenemos la localidad/barrio
-      const localidad = await getLocalidadDesdeDireccion(direccion);
-      const ciudad = await getCiudadDesdeDireccion(direccion);
-      conversations[ctx.from].barrio = localidad;
-      conversations[ctx.from].ciudad = ciudad;
-      console.log(localidad);
+    // Obtener barrio y localidad
+    const { barrio, localidad } = await getLocalidadDesdeDireccion(direccion);
+    const ciudad = await getCiudadDesdeDireccion(direccion);
 
-      /*
-      if (localidad) {
-          await flowDynamic(`(JUST FOR TESTS)📍 Hemos detectado la zona: ${localidad}`);
-          //conversations[ctx.from].localidad = localidad;
-      } else {
-          await flowDynamic(`⚠️ No pudimos detectar tu zona exacta, pero seguiremos con la dirección que nos diste.`);
-      }
-        */
+    conversations[ctx.from].barrio = barrio;
+    conversations[ctx.from].localidad = localidad;
+    conversations[ctx.from].ciudad = ciudad;
 
-      console.log(conversations[ctx.from]);
+    if (barrio || localidad) {
+      await flowDynamic(`📍 Localidad: *${localidad ?? 'desconocida'}*\n🏘️ Barrio: *${barrio ?? 'desconocido'}*`);
+    } else {
+      await flowDynamic(`⚠️ No pudimos detectar tu zona exacta, pero seguiremos con la dirección que nos diste.`);
+    }
 
-      return gotoFlow(u1);
+    return gotoFlow(u1);
   });
+
+
 
 const u1 = addKeyword('write_cc')
   .addAction(async (ctx, { flowDynamic }) => {
@@ -545,6 +542,8 @@ Total: ${conversations[ctx.from].precio}
     console.log(conversations[ctx.from]);
     
     if (choice === 'Si') {
+        console.log("Creando nuevo log");
+        
         await insertLeadRow(conversations[ctx.from]);
         return gotoFlow(q1);
     }

@@ -5,9 +5,9 @@ interface NominatimResult {
   [key: string]: any;
 }
 
-export async function getLocalidadDesdeDireccion(direccion: string): Promise<string | null> {
+export async function getLocalidadDesdeDireccion(direccion: string): Promise<{ barrio: string | null, localidad: string | null }> {
   const query = encodeURIComponent(`${direccion}, Bogotá, Colombia`);
-  const url = `https://nominatim.openstreetmap.org/search?format=json&q=${query}`;
+  const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&q=${query}`;
 
   try {
     const res = await fetch(url, {
@@ -18,15 +18,37 @@ export async function getLocalidadDesdeDireccion(direccion: string): Promise<str
 
     const data = await res.json() as NominatimResult[];
 
-    if (data.length > 0) {
-      return data[0].display_name || null;
+    if (data.length > 0 && data[0].address) {
+      const address = data[0].address;
+
+      // Extraer localidad
+      let localidad = address.city_district || address.city || null;
+      if (localidad?.toLowerCase() === 'bogotá') {
+        localidad = address.suburb || address.neighbourhood || null;
+      }
+      if (localidad?.toLowerCase().includes('localidad')) {
+        localidad = localidad.replace(/localidad\s*/i, '').trim();
+      }
+
+      // Extraer barrio
+      let barrio = address.neighbourhood || address.suburb || null;
+      if (barrio?.toLowerCase().includes('localidad')) {
+        barrio = barrio.replace(/localidad\s*/i, '').trim();
+      }
+
+      // Si barrio no se encontró, usar la localidad como barrio
+      if (!barrio) barrio = localidad;
+
+      return { barrio, localidad };
     }
   } catch (err) {
     console.error('Error buscando barrio/localidad:', err);
   }
 
-  return null;
+  return { barrio: null, localidad: null };
 }
+
+
 
 export async function getCiudadDesdeDireccion(direccion: string): Promise<string | null> {
   const query = encodeURIComponent(`${direccion}, Colombia`);

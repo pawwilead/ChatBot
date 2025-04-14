@@ -135,7 +135,7 @@ export async function insertLeadRow(conv: conversation) {
 
         const selectedDog = conv.selectedDog!;
         const values = [[
-            new Date(),
+            new Date().toISOString().slice(0, 16).replace('T', ' '),
             conv.id,
             conv.cc,
             conv.name,
@@ -145,23 +145,24 @@ export async function insertLeadRow(conv: conversation) {
             selectedDog.peso,
             selectedDog.descripcion,
             conv.ciudad,
+            conv.localidad,
             conv.barrio,
+            conv.address,
             conv.tipoServicio,
             conv.tiempoServicio,
             conv.fechaServicio,
             conv.inicioServicio,
-            conv.address,
             conv.precio
         ]];
 
         const response = await sheets.spreadsheets.values.append({
             spreadsheetId,
-            range: "leads!A2",  // Segunda fila bajo encabezado
+            range: "leads",
             valueInputOption: "RAW",
             insertDataOption: "INSERT_ROWS",
             requestBody: { values },
             auth: authClient
-        });
+        });        
 
         return { inserted: true };
     } catch (error) {

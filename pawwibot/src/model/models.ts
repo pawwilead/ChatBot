@@ -28,6 +28,8 @@ export class conversation {
     inicioServicio: string
     tiempoServicio: string
     ciudad: String
+    localidad: string
     barrio: string
+
     precio: number
 }
