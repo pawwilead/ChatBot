@@ -25,7 +25,8 @@ import {
     q1_hora,
     s1,
     u1,
-    c2
+    c2,
+    end
 } from "./mainFlow";
 
 export default createFlow([
@@ -51,5 +52,6 @@ export default createFlow([
     q1_hora,
     s1,
     u1,
-    c2
+    c2,
+    end
 ]);

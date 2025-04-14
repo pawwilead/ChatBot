@@ -67,7 +67,7 @@ const userRegistered = addKeyword(EVENTS.WELCOME)
         }
 
         await flowDynamic([{
-            body: `Guauuu, bienvenido/a de nuevo a Pawwi, soy Bimba. ¿A quién quieres que cuidemos?`,
+            body: `Guauuu, bienvenido/a de nuevo a Pawwi, soy Bimba 🐶. ¿A quién quieres que cuidemos?`,
             buttons
         }]);
 
@@ -113,7 +113,7 @@ const userRegistered_repeat = addKeyword(EVENTS.WELCOME)
         }
 
         await flowDynamic([{
-            body: `¿A quién quieres que cuidemos?`,
+            body: `¿A quién quieres que cuidemos? 🐾`,
             buttons
         }]);
 
@@ -144,7 +144,7 @@ const start = addKeyword(EVENTS.WELCOME)
         console.log("¿Usuario ya registrado?:", existe);
 
         await flowDynamic([{
-            body: `Guauuu, bienvenido/a a Pawwi, soy Bimba. ¡Existimos para que tú estés tranqui! Nos encargamos de encontrar cuidadores confiables en tu zona. ¿Qué quieres hacer hoy?`,
+            body: `Guauuu, bienvenido/a a Pawwi, soy Bimba 🐶. ¡Existimos para que tú estés tranqui! Nos encargamos de encontrar cuidadores confiables en tu zona. ¿Qué quieres hacer hoy?`,
             buttons: [
                 { body: 'Buscar cuidador' },
                 { body: 'Ser cuidador' }
@@ -180,7 +180,7 @@ const start_repeat = addKeyword('main_repeat')
 
         if (choice === 'Buscar cuidador') return gotoFlow(c2);
         if (choice === 'Ser cuidador') {
-            await flowDynamic('Para ser un Pawwier, por favor rellena el siguiente formulario: {Link de formulario}');
+            await flowDynamic('Para ser un Pawwier, por favor rellena el siguiente formulario 🚀: {Link de formulario}');
             return;
         }
 
@@ -188,7 +188,7 @@ const start_repeat = addKeyword('main_repeat')
     });
 
     const i1 = addKeyword('write_cc_new')
-    .addAnswer(`Guauuu, que bien, ¿Cómo se llama tu peludito?`)
+    .addAnswer('Guauuu, que bien 🐶​, ¿Cómo se llama tu peludito?')
     .addAnswer('', { capture: true })
     .addAction(async (ctx, { gotoFlow }) => {
         const nombre = ctx.body.trim();
@@ -208,10 +208,10 @@ const start_repeat = addKeyword('main_repeat')
         return gotoFlow(k1_raza);
     });
 
-    const k1_raza = addKeyword('write_pet_description')
+const k1_raza = addKeyword('write_pet_description')
     .addAction(async (ctx, { flowDynamic, gotoFlow }) => {
         const petName = conversations[ctx.from]?.selectedDog?.nombre || '[vacio]';
-        await flowDynamic(`Perfecto, ahora cuéntame ¿Qué raza es *${petName}*?`);
+        await flowDynamic(`Perfecto, ahora cuéntame ¿Qué raza es *${petName}*? 🐾`);
     })
     .addAnswer('', { capture: true })
     .addAction(async (ctx, { gotoFlow }) => {
@@ -255,7 +255,7 @@ const k1_edad = addKeyword('write_pet_description')
 
 
 const k1_consideraciones = addKeyword('write_pet_description')
-    .addAnswer(`¿Tienes alguna consideración especial que debamos saber? (Medicamentos, enfermedades, tratos especiales)`, { capture: true })
+    .addAnswer(`¿Tiene alguna consideración especial que debamos saber ❤️‍🩹? (Medicamentos, enfermedades, tratos especiales)`, { capture: true })
     .addAction(async (ctx, { gotoFlow }) => {
         const consideraciones = ctx.body.trim();
         const userId = ctx.from;
@@ -568,12 +568,25 @@ Total: ${conversations[ctx.from].precio}
         // Mensaje al usuario
         //await flowDynamic(`Danos unos minutos, estamos buscando cuidadores en tu zona. Si después de 20 minutos no te respondemos, no dudes en llamarnos al número de soporte +57 320 123 4567.`);
         
-        return gotoFlow(q1);
+        return gotoFlow(end);
     }
     
     if (choice === 'No') {
         return gotoFlow(userRegistered_repeat);}
     return gotoFlow(u1);
+  });
+
+const end = addKeyword('write_pet_description')
+  .addAction(async (ctx, { flowDynamic, gotoFlow }) => {
+      await flowDynamic(`📍 Danos unos minutos, estamos buscando cuidadores disponibles.\n\nSi después de 20 minutos no te respondemos, no dudes en llamarnos al número de soporte: +57 320 123 4567.`);
+  })
+  .addAnswer('', { capture: true })
+  .addAction(async (ctx, { gotoFlow }) => {
+      const raza = ctx.body.trim();
+      const userId = ctx.from;
+      if (conversations[userId].selectedDog) {
+          conversations[userId].selectedDog.raza = raza;
+      }
   });
 
 // 🆕 Flujo para registro nuevo
@@ -662,6 +675,7 @@ const e3 = addKeyword('write_cc_check')
         q1_hora,
         s1,
         u1,
-        c2
+        c2,
+        end
     };
     
