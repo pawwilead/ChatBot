@@ -1,5 +1,6 @@
 import { addKeyword, EVENTS } from "@builderbot/bot";
 import { conversation } from "~/model/models";
+import { sendNewLeadEmail } from "~/services/emailService";
 import { findCelInSheet, insertClientBasicInfo, insertLeadRow, updateDogsForClient } from "~/services/googleSheetsService";
 import { getCiudadDesdeDireccion, getLocalidadDesdeDireccion } from "~/services/openStreetMap";
 
@@ -540,13 +541,36 @@ Total: ${conversations[ctx.from].precio}
   .addAction(async (ctx, { gotoFlow }) => {
     const choice = ctx.body;
     console.log(conversations[ctx.from]);
-    
+
     if (choice === 'Si') {
         console.log("Creando nuevo log");
-        
         await insertLeadRow(conversations[ctx.from]);
+    
+        const conv = conversations[ctx.from];
+        const dog = conv.selectedDog;
+    
+        const emailText = `
+    🐾 ¡Nuevo lead generado!
+    
+    👤 Usuario: ${conv.name}
+    📍 Localidad: ${conv.localidad}
+    🏘️ Barrio: ${conv.barrio}
+    📅 Fecha: ${conv.fechaServicio}
+    🕒 Hora: ${conv.inicioServicio}
+    🐶 Mascota: ${dog?.nombre} (${dog?.raza})
+    📍 Dirección: ${conv.address}
+    📦 Servicio: ${conv.tipoServicio} por ${conv.tiempoServicio}
+    💰 Precio: ${conv.precio}
+    `;
+    
+        await sendNewLeadEmail(process.env.EMAIL_ADMIN!, '📬 ¡Nuevo Lead en Pawwi!', emailText);
+        
+        // Mensaje al usuario
+        //await flowDynamic(`Danos unos minutos, estamos buscando cuidadores en tu zona. Si después de 20 minutos no te respondemos, no dudes en llamarnos al número de soporte +57 320 123 4567.`);
+        
         return gotoFlow(q1);
     }
+    
     if (choice === 'No') {
         return gotoFlow(userRegistered_repeat);}
     return gotoFlow(u1);

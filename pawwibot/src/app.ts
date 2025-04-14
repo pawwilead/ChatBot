@@ -4,6 +4,8 @@ import { MemoryDB as Database } from '@builderbot/bot'
 import { MetaProvider as Provider } from '@builderbot/provider-meta'
 import template from './template'
 import { provider } from './provider'
+import dotenv from 'dotenv';
+dotenv.config();
 
 const PORT = process.env.PORT ?? 3008
 
