@@ -340,8 +340,8 @@ const m1 = addKeyword('write_cc')
       {
         body: `¿Cuánto tiempo necesitas el paseo?`,
         buttons: [
-          { body: 'Express (15 min)' },
-          { body: 'Medium (30 min)' },
+          { body: 'Flash (15 min)' },
+          { body: 'Chill (30 min)' },
           { body: 'Jumbo (1 Hora)' }
         ]
       }
@@ -351,11 +351,11 @@ const m1 = addKeyword('write_cc')
   .addAction(async (ctx, { gotoFlow }) => {
     const choice = ctx.body;
     conversations[ctx.from].tipoServicio = "Paseo"
-    if (choice === 'Express (15 min)') {
+    if (choice === 'Flash (15 min)') {
         conversations[ctx.from].tiempoServicio = "15 minutos"
         conversations[ctx.from].precio = 7500
         return gotoFlow(q1);}
-    if (choice === 'Medium (30 min)') {
+    if (choice === 'Chill (30 min)') {
         conversations[ctx.from].tiempoServicio = "30 minutos"
         conversations[ctx.from].precio = 10000
         return gotoFlow(q1);}
